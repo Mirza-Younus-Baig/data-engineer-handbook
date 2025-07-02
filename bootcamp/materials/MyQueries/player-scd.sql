@@ -37,27 +37,38 @@ create table players_scd_table
 	current_season INTEGER
 );
 
-
+drop type if exists scd_type;
+CREATE TYPE scd_type AS (
+                    scoring_class scoring_class,
+                    is_active boolean,
+                    start_season INTEGER,
+                    end_season INTEGER
+);
 
 with with_previous as (
-
     SELECT player_name, scoring_class,
     LAG(scoring_class) over (partition by player_name order by current_season) as prev_scoring_class,
     isactive,
-    LAG(isactive) over (partition by player_name order by current_season) as prev_isactive
+    LAG(isactive) over (partition by player_name order by current_season) as prev_isactive,
+    current_season
     FROM players
 ),
  with_indicator as (
     select *,
     CASE 
         WHEN scoring_class <> prev_scoring_class THEN 1
-        ELSE 0
-    END as has_changed_scoring_class,
-    CASE 
         WHEN isactive <> prev_isactive THEN 1
-        ELSE 0
-    END as has_changed_isactive
+    END as change_indicator
     FROM with_previous
+),
+with_streaks as (
+    SELECT *, 
+        SUM(change_indicator) over (partition by player_name order by current_season) as streak_identifier
+    from with_indicator
 )
-with streak
-SELECT * FROM with_indicator where has_changed_scoring_class = 1 or has_changed_isactive = 1;
+SELECT player_name, isactive, scoring_class,
+    MIN(current_season) as start_season,
+    MAX(current_season) as end_season
+from with_streaks
+group by player_name,isactive, scoring_class
+order by player_name;
