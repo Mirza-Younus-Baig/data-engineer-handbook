@@ -70,5 +70,4 @@ SELECT player_name, isactive, scoring_class,
     MIN(current_season) as start_season,
     MAX(current_season) as end_season
 from with_streaks
-group by player_name,isactive, scoring_class
-order by player_name;
+group by player_name, streak_identifier, isactive, scoring_class;
