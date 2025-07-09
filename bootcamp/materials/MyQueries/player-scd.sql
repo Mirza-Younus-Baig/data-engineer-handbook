@@ -26,7 +26,7 @@ WHERE dr <= 3;
 Select distinct on (player_name) * from players
 where country = 'Angola';
 
-
+drop table if exists players_scd_table;
 create table players_scd_table
 (
 	player_name text,
@@ -34,7 +34,9 @@ create table players_scd_table
 	is_active boolean,
 	start_season integer,
 	end_date integer,
-	current_season INTEGER
+	current_season INTEGER,
+    PRIMARY KEY(player_name, start_season)
+
 );
 
 drop type if exists scd_type;
@@ -44,7 +46,9 @@ CREATE TYPE scd_type AS (
                     start_season INTEGER,
                     end_season INTEGER
 );
-
+select * from players;
+delete from players_scd_table;
+INSERT INTO players_scd_table
 with with_previous as (
     SELECT player_name, scoring_class,
     LAG(scoring_class) over (partition by player_name order by current_season) as prev_scoring_class,
@@ -66,8 +70,13 @@ with_streaks as (
         SUM(change_indicator) over (partition by player_name order by current_season) as streak_identifier
     from with_indicator
 )
-SELECT player_name, isactive, scoring_class,
+SELECT player_name, scoring_class, isactive, 
     MIN(current_season) as start_season,
-    MAX(current_season) as end_season
+    MAX(current_season) as end_season,
+    2022 as current_season
 from with_streaks
-group by player_name, streak_identifier, isactive, scoring_class;
+group by player_name, streak_identifier, isactive, scoring_class
+order by player_name, streak_identifier, isactive, scoring_class;
+
+
+select * from players_scd_table;
