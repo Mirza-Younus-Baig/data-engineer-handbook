@@ -77,8 +77,6 @@ from player_details
 select type, count(1) from vertices
 group by type;
 
-select * from game_details;
-
 with deduped_game_details as (
     select *, ROW_NUMBER() over (partition by player_id, game_id) as row_num
     from game_details
@@ -103,7 +101,6 @@ where row_num = 1
 select * from edges
 where subject_identifier='1713';
 
-
 SELECT
     v.properties->>'player_name' as name,
     sum((e.properties->>'points')::INTEGER) as points
@@ -114,9 +111,54 @@ where e.properties->>'points' is not NULL
 group by 1
 order by 2 desc, 1;
 
-
 select game_id, player_id, team_id, count(1) as cnt from game_details
 group by game_id, player_id, team_id
 order by cnt desc;
 
 
+WITH deduped_game_details AS
+  (
+         SELECT *,
+                row_number() over (partition by player_id, game_id) AS row_num
+         FROM   game_details ), 
+    filtered_game_details AS
+  (
+         SELECT *
+         FROM   deduped_game_details
+         WHERE  row_num = 1 ), 
+    aggregated AS
+  (
+           SELECT   g1.player_id         AS subject_identifier,
+                    max(g1.player_name)  AS subject_player_name,
+                    g2.player_id         AS object_identifier,
+                    max(g2.player_name)  AS object_player_name,
+                    g1.team_abbreviation AS subject_player_team,
+                    g2.team_abbreviation AS object_player_team,
+                    CASE
+                             WHEN g1.team_abbreviation = g2.team_abbreviation THEN 'shares_team' :: edge_type
+                             ELSE 'plays_against' :: edge_type
+                    end         AS edge_type,
+                    array_agg(g1.game_id) as games,
+                    count(1)    AS no_of_games,
+                    sum(g1.pts) AS subject_points,
+                    sum(g2.pts) AS object_points
+           FROM     filtered_game_details g1
+           JOIN     filtered_game_details g2
+           ON       g1.game_id = g2.game_id
+           AND      g1.player_id <> g2.player_id
+           GROUP BY 1,
+                    3,
+                    5,
+                    6)
+    INSERT INTO edges (
+    SELECT 
+        subject_identifier,
+        'player'::vertex_type AS subject_type,
+        object_identifier,
+        'player'::vertex_type AS object_type,
+        edge_type,
+        json_build_object( 'subject_player_name', subject_player_name, 'object_player_name', object_player_name, 'subject_player_team', subject_player_team, 'object_player_team',object_player_team, 'total_games', no_of_games, 'subject_points', subject_points, 'object_points', object_points )
+    FROM (
+        SELECT DISTINCT *
+        FROM aggregated
+    ) dd );
